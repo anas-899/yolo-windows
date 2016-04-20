@@ -18,7 +18,13 @@ extern void run_writing(int argc, char **argv);
 extern void run_captcha(int argc, char **argv);
 extern void run_nightmare(int argc, char **argv);
 extern void run_dice(int argc, char **argv);
-
+extern void run_compare(int argc, char **argv);
+extern void run_classifier(int argc, char **argv);
+extern void run_char_rnn(int argc, char **argv);
+extern void run_vid_rnn(int argc, char **argv);
+extern void run_tag(int argc, char **argv);
+extern void run_cifar(int argc, char **argv);
+extern void run_go(int argc, char **argv);
 
 void change_rate(char *filename, float scale, float add)
 {
@@ -87,7 +93,7 @@ void partial(char *cfgfile, char *weightfile, char *outfile, int max)
     if(weightfile){
         load_weights_upto(&net, weightfile, max);
     }
-    net.seen = 0;
+    *net.seen = 0;
     save_weights_upto(net, outfile, max);
 }
 
@@ -139,6 +145,47 @@ void rgbgr_net(char *cfgfile, char *weightfile, char *outfile)
     save_weights(net, outfile);
 }
 
+void normalize_net(char *cfgfile, char *weightfile, char *outfile)
+{
+    gpu_index = -1;
+    network net = parse_network_cfg(cfgfile);
+    if(weightfile){
+        load_weights(&net, weightfile);
+    }
+    int i, j;
+    for(i = 0; i < net.n; ++i){
+        layer l = net.layers[i];
+        if(l.type == CONVOLUTIONAL){
+            net.layers[i].batch_normalize=1;
+            net.layers[i].scales = calloc(l.n, sizeof(float));
+            for(j = 0; j < l.n; ++j){
+                net.layers[i].scales[i] = 1;
+            }
+            net.layers[i].rolling_mean = calloc(l.n, sizeof(float));
+            net.layers[i].rolling_variance = calloc(l.n, sizeof(float));
+        }
+    }
+    save_weights(net, outfile);
+}
+
+void denormalize_net(char *cfgfile, char *weightfile, char *outfile)
+{
+    gpu_index = -1;
+    network net = parse_network_cfg(cfgfile);
+    if (weightfile) {
+        load_weights(&net, weightfile);
+    }
+    int i;
+    for (i = 0; i < net.n; ++i) {
+        layer l = net.layers[i];
+        if (l.type == CONVOLUTIONAL && l.batch_normalize) {
+            denormalize_convolutional_layer(l);
+            net.layers[i].batch_normalize=0;
+        }
+    }
+    save_weights(net, outfile);
+}
+
 void visualize(char *cfgfile, char *weightfile)
 {
     network net = parse_network_cfg(cfgfile);
@@ -161,15 +208,15 @@ int main(int argc, char **argv)
         return 0;
     }
     gpu_index = find_int_arg(argc, argv, "-i", 0);
-    if(find_arg(argc, argv, "-nogpu")) gpu_index = -1;
+    if(find_arg(argc, argv, "-nogpu")) {
+        gpu_index = -1;
+    }
 
 #ifndef GPU
     gpu_index = -1;
 #else
     if(gpu_index >= 0){
-		//on my own computer there is only one card, and the serial start by zero,
-		//so minus 1 needed, frisch
-        cudaError_t status = cudaSetDevice(gpu_index-1);
+        cudaError_t status = cudaSetDevice(gpu_index);
         check_error(status);
     }
 #endif
@@ -180,8 +227,22 @@ int main(int argc, char **argv)
         average(argc, argv);
     } else if (0 == strcmp(argv[1], "yolo")){
         run_yolo(argc, argv);
+    } else if (0 == strcmp(argv[1], "cifar")){
+        run_cifar(argc, argv);
+    } else if (0 == strcmp(argv[1], "go")){
+        run_go(argc, argv);
+    } else if (0 == strcmp(argv[1], "rnn")){
+        run_char_rnn(argc, argv);
+    } else if (0 == strcmp(argv[1], "vid")){
+        run_vid_rnn(argc, argv);
     } else if (0 == strcmp(argv[1], "coco")){
         run_coco(argc, argv);
+    } else if (0 == strcmp(argv[1], "classifier")){
+        run_classifier(argc, argv);
+    } else if (0 == strcmp(argv[1], "tag")){
+        run_tag(argc, argv);
+    } else if (0 == strcmp(argv[1], "compare")){
+        run_compare(argc, argv);
     } else if (0 == strcmp(argv[1], "dice")){
         run_dice(argc, argv);
     } else if (0 == strcmp(argv[1], "writing")){
@@ -196,6 +257,10 @@ int main(int argc, char **argv)
         change_rate(argv[2], atof(argv[3]), (argc > 4) ? atof(argv[4]) : 0);
     } else if (0 == strcmp(argv[1], "rgbgr")){
         rgbgr_net(argv[2], argv[3], argv[4]);
+    } else if (0 == strcmp(argv[1], "denormalize")){
+        denormalize_net(argv[2], argv[3], argv[4]);
+    } else if (0 == strcmp(argv[1], "normalize")){
+        normalize_net(argv[2], argv[3], argv[4]);
     } else if (0 == strcmp(argv[1], "rescale")){
         rescale_net(argv[2], argv[3], argv[4]);
     } else if (0 == strcmp(argv[1], "partial")){

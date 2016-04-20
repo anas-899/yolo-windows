@@ -13,7 +13,7 @@
 region_layer make_region_layer(int batch, int inputs, int n, int side, int classes, int coords, int rescore)
 {
     region_layer l = {0};
-    l.type = REGION;
+    //l.type = REGION;
     
     l.n = n;
     l.batch = batch;

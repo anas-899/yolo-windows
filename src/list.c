@@ -26,7 +26,7 @@ void transfer_node(list *s, list *d, node *n)
 */
 
 void *list_pop(list *l){
-	node *b; //modified by frisch
+    node *b;
     if(!l->back) return 0;
     b = l->back;
     void *val = b->val;

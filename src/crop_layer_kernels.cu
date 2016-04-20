@@ -1,3 +1,7 @@
+#include "cuda_runtime.h"
+#include "curand.h"
+#include "cublas_v2.h"
+
 extern "C" {
 #include "crop_layer.h"
 #include "utils.h"
@@ -91,7 +95,7 @@ __device__ float bilinear_interpolate_kernel(float *image, int w, int h, float x
     return val;
 }
 
-__global__ void levels_image_kernel(float *image, float *rand, int batch, int w, int h, int train, float saturation, float exposure, float translate, float scale)
+__global__ void levels_image_kernel(float *image, float *rand, int batch, int w, int h, int train, float saturation, float exposure, float translate, float scale, float shift)
 {
     int size = batch * w * h;
     int id = (blockIdx.x + blockIdx.y*gridDim.x) * blockDim.x + threadIdx.x;
@@ -100,6 +104,9 @@ __global__ void levels_image_kernel(float *image, float *rand, int batch, int w,
     id /= w;
     int y = id % h;
     id /= h;
+    float rshift = rand[0];
+    float gshift = rand[1];
+    float bshift = rand[2];
     float r0 = rand[8*id + 0];
     float r1 = rand[8*id + 1];
     float r2 = rand[8*id + 2];
@@ -121,10 +128,12 @@ __global__ void levels_image_kernel(float *image, float *rand, int batch, int w,
         hsv.y *= saturation;
         hsv.z *= exposure;
         rgb = hsv_to_rgb_kernel(hsv);
+    } else {
+        shift = 0;
     }
-    image[x + w*(y + h*0)] = rgb.x*scale + translate;
-    image[x + w*(y + h*1)] = rgb.y*scale + translate;
-    image[x + w*(y + h*2)] = rgb.z*scale + translate;
+    image[x + w*(y + h*0)] = rgb.x*scale + translate + (rshift - .5)*shift;
+    image[x + w*(y + h*1)] = rgb.y*scale + translate + (gshift - .5)*shift;
+    image[x + w*(y + h*2)] = rgb.z*scale + translate + (bshift - .5)*shift;
 }
 
 __global__ void forward_crop_layer_kernel(float *input, float *rand, int size, int c, int h, int w, int crop_height, int crop_width, int train, int flip, float angle, float *output)
@@ -175,7 +184,7 @@ extern "C" void forward_crop_layer_gpu(crop_layer layer, network_state state)
 {
     cuda_random(layer.rand_gpu, layer.batch*8);
 
-    float radians = layer.angle*3.14159/180.;
+    float radians = layer.angle*3.14159265/180.;
 
     float scale = 2;
     float translate = -1;
@@ -186,12 +195,12 @@ extern "C" void forward_crop_layer_gpu(crop_layer layer, network_state state)
 
     int size = layer.batch * layer.w * layer.h;
 
-    levels_image_kernel<<<cuda_gridsize(size), BLOCK>>>(state.input, layer.rand_gpu, layer.batch, layer.w, layer.h, state.train, layer.saturation, layer.exposure, translate, scale);
+    levels_image_kernel<<<cuda_gridsize(size), BLOCK>>>(state.input, layer.rand_gpu, layer.batch, layer.w, layer.h, state.train, layer.saturation, layer.exposure, translate, scale, layer.shift);
     check_error(cudaPeekAtLastError());
 
-    size = layer.batch*layer.c*layer.crop_width*layer.crop_height;
+    size = layer.batch*layer.c*layer.out_w*layer.out_h;
 
-    forward_crop_layer_kernel<<<cuda_gridsize(size), BLOCK>>>(state.input, layer.rand_gpu, size, layer.c, layer.h, layer.w, layer.crop_height, layer.crop_width, state.train, layer.flip, radians, layer.output_gpu);
+    forward_crop_layer_kernel<<<cuda_gridsize(size), BLOCK>>>(state.input, layer.rand_gpu, size, layer.c, layer.h, layer.w, layer.out_h, layer.out_w, state.train, layer.flip, radians, layer.output_gpu);
     check_error(cudaPeekAtLastError());
 
 /*

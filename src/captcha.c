@@ -1,6 +1,7 @@
 #include "network.h"
 #include "utils.h"
 #include "parser.h"
+#include "image.h"
 
 void fix_data_captcha(data d, int mask)
 {
@@ -38,9 +39,8 @@ void train_captcha(char *cfgfile, char *weightfile)
         load_weights(&net, weightfile);
     }
     printf("Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
-    //net.seen=0;
     int imgs = 1024;
-    int i = net.seen/imgs;
+    int i = *net.seen/imgs;
     int solved = 1;
     list *plist;
     char **labels = get_labels("/data/captcha/reimgs.labels.list");
@@ -85,10 +85,9 @@ void train_captcha(char *cfgfile, char *weightfile)
         printf("Loaded: %lf seconds\n", sec(clock()-time));
         time=clock();
         float loss = train_network(net, train);
-        net.seen += imgs;
         if(avg_loss == -1) avg_loss = loss;
         avg_loss = avg_loss*.9 + loss*.1;
-        printf("%d: %f, %f avg, %lf seconds, %d images\n", i, loss, avg_loss, sec(clock()-time), net.seen);
+        printf("%d: %f, %f avg, %lf seconds, %d images\n", i, loss, avg_loss, sec(clock()-time), *net.seen);
         free_data(train);
         if(i%100==0){
             char buff[256];
@@ -108,7 +107,8 @@ void test_captcha(char *cfgfile, char *weightfile, char *filename)
     srand(2222222);
     int i = 0;
     char **names = get_labels("/data/captcha/reimgs.labels.list");
-    char input[256];
+    char buff[256];
+    char *input = buff;
     int indexes[26];
     while(1){
         if(filename){
@@ -116,7 +116,8 @@ void test_captcha(char *cfgfile, char *weightfile, char *filename)
         }else{
             //printf("Enter Image Path: ");
             //fflush(stdout);
-            fgets(input, 256, stdin);
+            input = fgets(input, 256, stdin);
+            if(!input) return;
             strtok(input, "\n");
         }
         image im = load_image_color(input, net.w, net.h);
@@ -138,7 +139,7 @@ void test_captcha(char *cfgfile, char *weightfile, char *filename)
 
 void valid_captcha(char *cfgfile, char *weightfile, char *filename)
 {
-	image im;  //modified by frisch
+    image im;
     char **labels = get_labels("/data/captcha/reimgs.labels.list");
     network net = parse_network_cfg(cfgfile);
     if(weightfile){
@@ -154,6 +155,7 @@ void valid_captcha(char *cfgfile, char *weightfile, char *filename)
     int i, j;
     for(i = 0; i < N; ++i){
         if (i%100 == 0) fprintf(stderr, "%d\n", i);
+        //image 
         im = load_image_color(paths[i], net.w, net.h);
         float *X = im.data;
         float *predictions = network_predict(net, X);

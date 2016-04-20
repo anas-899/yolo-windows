@@ -1,16 +1,14 @@
 #include <stdio.h> /* needed for sockaddr_in */
 #include <string.h> /* needed for sockaddr_in */
-
+#include <unistd.h>
 #include <sys/types.h>
-//#include <sys/socket.h>
-//#include <netinet/in.h> /* needed for sockaddr_in */
-//#include <netdb.h>
-#include <WinSock2.h>
+#include <sys/socket.h>
+#include <netinet/in.h> /* needed for sockaddr_in */
+#include <netdb.h>
 #include <pthread.h>
 #include <time.h>
 
-//#include "mini_blas.h"
-#include "unistd.h"
+#include "mini_blas.h"
 #include "utils.h"
 #include "parser.h"
 #include "server.h"
@@ -114,7 +112,7 @@ void server_update(network net)
     int counter = 18000;
     listen(fd, 64);
     struct sockaddr_in client;     /* remote address */
-    /*socklen_t*/int  client_size = sizeof(client);   /* length of addresses */  //modified by frisch
+    socklen_t client_size = sizeof(client);   /* length of addresses */
     time_t t=0;
     while(1){
         connection_info *info = calloc(1, sizeof(connection_info));

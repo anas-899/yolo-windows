@@ -18,7 +18,7 @@ void train_dice(char *cfgfile, char *weightfile)
     }
     printf("Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
     int imgs = 1024;
-    int i = net.seen/imgs;
+    int i = *net.seen/imgs;
     char **labels = dice_labels;
     list *plist = get_paths("data/dice/dice.train.list");
     char **paths = (char **)list_to_array(plist);
@@ -32,10 +32,9 @@ void train_dice(char *cfgfile, char *weightfile)
 
         time=clock();
         float loss = train_network(net, train);
-        net.seen += imgs;
         if(avg_loss == -1) avg_loss = loss;
         avg_loss = avg_loss*.9 + loss*.1;
-        printf("%d: %f, %f avg, %lf seconds, %d images\n", i, loss, avg_loss, sec(clock()-time), net.seen);
+        printf("%d: %f, %f avg, %lf seconds, %d images\n", i, loss, avg_loss, sec(clock()-time), *net.seen);
         free_data(train);
         if((i % 100) == 0) net.learning_rate *= .1;
         if(i%100==0){
@@ -62,7 +61,7 @@ void validate_dice(char *filename, char *weightfile)
     free_list(plist);
 
     data val = load_data(paths, m, 0, labels, 6, net.w, net.h);
-    float *acc = network_accuracies(net, val);
+    float *acc = network_accuracies(net, val, 2);
     printf("Validation Accuracy: %f, %d images\n", acc[0], m);
     free_data(val);
 }
@@ -77,7 +76,8 @@ void test_dice(char *cfgfile, char *weightfile, char *filename)
     srand(2222222);
     int i = 0;
     char **names = dice_labels;
-    char input[256];
+    char buff[256];
+    char *input = buff;
     int indexes[6];
     while(1){
         if(filename){
@@ -85,7 +85,8 @@ void test_dice(char *cfgfile, char *weightfile, char *filename)
         }else{
             printf("Enter Image Path: ");
             fflush(stdout);
-            fgets(input, 256, stdin);
+            input = fgets(input, 256, stdin);
+            if(!input) return;
             strtok(input, "\n");
         }
         image im = load_image_color(input, net.w, net.h);

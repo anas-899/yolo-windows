@@ -6,6 +6,8 @@
 
 #define SECRET_NUM -1234
 
+void shuffle(void *arr, size_t n, size_t size);
+void sorta_shuffle(void *arr, size_t n, size_t size, size_t sections);
 void free_ptrs(void **ptrs, int n);
 char *basecfg(char *cfgfile);
 int alphanum_to_int(char c);
@@ -32,9 +34,11 @@ int max_index(float *a, int n);
 float constrain(float min, float max, float a);
 float mse_array(float *a, int n);
 float rand_normal();
-float rand_uniform();
+float rand_uniform(float min, float max);
+int rand_int(int min, int max);
 float sum_array(float *a, int n);
 float mean_array(float *a, int n);
+void mean_arrays(float **a, int n, int els, float *avg);
 float variance_array(float *a, int n);
 float mag_array(float *a, int n);
 float **one_hot_encode(float *a, int n, int k);

@@ -9,45 +9,9 @@
 
 unsigned int data_seed;
 
-//because windows doesn't have rand_r functions, so write this function to substitutte;
-//add by frisch 2015/09/17
-#if 0
-int rand_r(int* random_seed)
-{
-	srand(*random_seed);
-	return rand();
-}
-#endif
-
-//add by frisch 2015/09/17
-//generate random number
-int rand_r(unsigned int *seed)
-{
-	unsigned int next = *seed;
-	int result;
-
-	next *= 1103515245;
-	next += 12345;
-	result = (unsigned int)(next / 65536) % 2048;
-
-	next *= 1103515245;
-	next += 12345;
-	result <<= 10;
-	result ^= (unsigned int)(next / 65536) % 1024;
-
-	next *= 1103515245;
-	next += 12345;
-	result <<= 10;
-	result ^= (unsigned int)(next / 65536) % 1024;
-
-	*seed = next;
-
-	return result;
-}
-
 list *get_paths(char *filename)
 {
-	list *lines = NULL;  //add by frisch
+    list *lines;
     char *path;
     FILE *file = fopen(filename, "r");
     if(!file) file_error(filename);
@@ -91,7 +55,12 @@ matrix load_image_paths_gray(char **paths, int n, int w, int h)
     X.cols = 0;
 
     for(i = 0; i < n; ++i){
-        image im = load_image(paths[i], w, h, 1);
+        image im = load_image(paths[i], w, h, 3);
+
+        image gray = grayscale_image(im);
+        free_image(im);
+        im = gray;
+
         X.vals[i] = im.data;
         X.cols = im.h*im.w*im.c;
     }
@@ -113,6 +82,32 @@ matrix load_image_paths(char **paths, int n, int w, int h)
     }
     return X;
 }
+
+matrix load_image_cropped_paths(char **paths, int n, int min, int max, int size)
+{
+    int i;
+    matrix X;
+    X.rows = n;
+    X.vals = calloc(X.rows, sizeof(float*));
+    X.cols = 0;
+
+    for(i = 0; i < n; ++i){
+        image im = load_image_color(paths[i], 0, 0);
+        image crop = random_crop_image(im, min, max, size);
+        int flip = rand_r(&data_seed)%2;
+        if (flip) flip_image(crop);
+        /*
+        show_image(im, "orig");
+        show_image(crop, "crop");
+        cvWaitKey(0);
+        */
+        free_image(im);
+        X.vals[i] = crop.data;
+        X.cols = crop.h*crop.w*crop.c;
+    }
+    return X;
+}
+
 
 box_label *read_boxes(char *filename, int *n)
 {
@@ -181,11 +176,50 @@ void correct_boxes(box_label *boxes, int n, float dx, float dy, float sx, float 
     }
 }
 
+void fill_truth_swag(char *path, float *truth, int classes, int flip, float dx, float dy, float sx, float sy)
+{
+    char *labelpath = find_replace(path, "images", "labels");
+    labelpath = find_replace(labelpath, "JPEGImages", "labels");
+
+    labelpath = find_replace(labelpath, ".jpg", ".txt");
+    labelpath = find_replace(labelpath, ".JPG", ".txt");
+    labelpath = find_replace(labelpath, ".JPEG", ".txt");
+    int count = 0;
+    box_label *boxes = read_boxes(labelpath, &count);
+    randomize_boxes(boxes, count);
+    correct_boxes(boxes, count, dx, dy, sx, sy, flip);
+    float x,y,w,h;
+    int id;
+    int i;
+
+    for (i = 0; i < count && i < 30; ++i) {
+        x =  boxes[i].x;
+        y =  boxes[i].y;
+        w =  boxes[i].w;
+        h =  boxes[i].h;
+        id = boxes[i].id;
+
+        if (w < .0 || h < .0) continue;
+
+        int index = (4+classes) * i;
+
+        truth[index++] = x;
+        truth[index++] = y;
+        truth[index++] = w;
+        truth[index++] = h;
+
+        if (id < classes) truth[index+id] = 1;
+    }
+    free(boxes);
+}
+
 void fill_truth_region(char *path, float *truth, int classes, int num_boxes, int flip, float dx, float dy, float sx, float sy)
 {
     char *labelpath = find_replace(path, "images", "labels");
     labelpath = find_replace(labelpath, "JPEGImages", "labels");
+
     labelpath = find_replace(labelpath, ".jpg", ".txt");
+    labelpath = find_replace(labelpath, ".JPG", ".txt");
     labelpath = find_replace(labelpath, ".JPEG", ".txt");
     int count = 0;
     box_label *boxes = read_boxes(labelpath, &count);
@@ -213,8 +247,10 @@ void fill_truth_region(char *path, float *truth, int classes, int num_boxes, int
         int index = (col+row*num_boxes)*(5+classes);
         if (truth[index]) continue;
         truth[index++] = 1;
-        if (classes) truth[index+id] = 1;
+
+        if (id < classes) truth[index+id] = 1;
         index += classes;
+
         truth[index++] = x;
         truth[index++] = y;
         truth[index++] = w;
@@ -328,9 +364,8 @@ void fill_truth_captcha(char *path, int n, float *truth)
 
 data load_data_captcha(char **paths, int n, int m, int k, int w, int h)
 {
-	data d;  //modified by frisch
+    data d;
     if(m) paths = get_random_paths(paths, n, m);
-    
     d.shallow = 0;
     d.X = load_image_paths(paths, n, w, h);
     d.y = make_matrix(n, k*NUMCHARS);
@@ -344,9 +379,8 @@ data load_data_captcha(char **paths, int n, int m, int k, int w, int h)
 
 data load_data_captcha_encode(char **paths, int n, int m, int w, int h)
 {
-	data d; //modefied by frisch
+    data d;
     if(m) paths = get_random_paths(paths, n, m);
-    
     d.shallow = 0;
     d.X = load_image_paths(paths, n, w, h);
     d.X.cols = 17100;
@@ -379,6 +413,33 @@ matrix load_labels_paths(char **paths, int n, char **labels, int k)
     return y;
 }
 
+matrix load_tags_paths(char **paths, int n, int k)
+{
+    matrix y = make_matrix(n, k);
+    int i;
+    int count = 0;
+    for(i = 0; i < n; ++i){
+        char *label = find_replace(paths[i], "imgs", "labels");
+        label = find_replace(label, "_iconl.jpeg", ".txt");
+        FILE *file = fopen(label, "r");
+        if(!file){
+            label = find_replace(label, "labels", "labels2");
+            file = fopen(label, "r");
+            if(!file) continue;
+        }
+        ++count;
+        int tag;
+        while(fscanf(file, "%d", &tag) == 1){
+            if(tag < k){
+                y.vals[i][tag] = 1;
+            }
+        }
+        fclose(file);
+    }
+    printf("%d/%d\n", count, n);
+    return y;
+}
+
 char **get_labels(char *filename)
 {
     list *plist = get_paths(filename);
@@ -398,7 +459,7 @@ void free_data(data d)
     }
 }
 
-data load_data_region(int n, char **paths, int m, int w, int h, int size, int classes)
+data load_data_region(int n, char **paths, int m, int w, int h, int size, int classes, float jitter)
 {
     char **random_paths = get_random_paths(paths, n, m);
     int i;
@@ -417,13 +478,13 @@ data load_data_region(int n, char **paths, int m, int w, int h, int size, int cl
         int oh = orig.h;
         int ow = orig.w;
 
-        int dw = ow/10;
-        int dh = oh/10;
+        int dw = (ow*jitter);
+        int dh = (oh*jitter);
 
-        int pleft  = (rand_uniform() * 2*dw - dw);
-        int pright = (rand_uniform() * 2*dw - dw);
-        int ptop   = (rand_uniform() * 2*dh - dh);
-        int pbot   = (rand_uniform() * 2*dh - dh);
+        int pleft  = rand_uniform(-dw, dw);
+        int pright = rand_uniform(-dw, dw);
+        int ptop   = rand_uniform(-dh, dh);
+        int pbot   = rand_uniform(-dh, dh);
 
         int swidth =  ow - pleft - pright;
         int sheight = oh - ptop - pbot;
@@ -452,8 +513,8 @@ data load_data_region(int n, char **paths, int m, int w, int h, int size, int cl
 
 data load_data_compare(int n, char **paths, int m, int classes, int w, int h)
 {
-    char **random_paths = get_random_paths(paths, 2*n, m);
-    int i;
+    if(m) paths = get_random_paths(paths, 2*n, m);
+    int i,j;
     data d;
     d.shallow = 0;
 
@@ -464,20 +525,104 @@ data load_data_compare(int n, char **paths, int m, int classes, int w, int h)
     int k = 2*(classes);
     d.y = make_matrix(n, k);
     for(i = 0; i < n; ++i){
-        image im1 = load_image_color(random_paths[i*2],   w, h);
-        image im2 = load_image_color(random_paths[i*2+1], w, h);
+        image im1 = load_image_color(paths[i*2],   w, h);
+        image im2 = load_image_color(paths[i*2+1], w, h);
 
         d.X.vals[i] = calloc(d.X.cols, sizeof(float));
         memcpy(d.X.vals[i],         im1.data, h*w*3*sizeof(float));
         memcpy(d.X.vals[i] + h*w*3, im2.data, h*w*3*sizeof(float));
 
-        //char *imlabel1 = find_replace(random_paths[i*2],   "imgs", "labels");
-        //char *imlabel2 = find_replace(random_paths[i*2+1], "imgs", "labels");
+        int id;
+        float iou;
+
+        char *imlabel1 = find_replace(paths[i*2],   "imgs", "labels");
+        imlabel1 = find_replace(imlabel1, "jpg", "txt");
+        FILE *fp1 = fopen(imlabel1, "r");
+
+        while(fscanf(fp1, "%d %f", &id, &iou) == 2){
+            if (d.y.vals[i][2*id] < iou) d.y.vals[i][2*id] = iou;
+        }
+
+        char *imlabel2 = find_replace(paths[i*2+1], "imgs", "labels");
+        imlabel2 = find_replace(imlabel2, "jpg", "txt");
+        FILE *fp2 = fopen(imlabel2, "r");
+
+        while(fscanf(fp2, "%d %f", &id, &iou) == 2){
+            if (d.y.vals[i][2*id + 1] < iou) d.y.vals[i][2*id + 1] = iou;
+        }
+        
+        for (j = 0; j < classes; ++j){
+            if (d.y.vals[i][2*j] > .5 &&  d.y.vals[i][2*j+1] < .5){
+                d.y.vals[i][2*j] = 1;
+                d.y.vals[i][2*j+1] = 0;
+            } else if (d.y.vals[i][2*j] < .5 &&  d.y.vals[i][2*j+1] > .5){
+                d.y.vals[i][2*j] = 0;
+                d.y.vals[i][2*j+1] = 1;
+            } else {
+                d.y.vals[i][2*j]   = SECRET_NUM;
+                d.y.vals[i][2*j+1] = SECRET_NUM;
+            }
+        }
+        fclose(fp1);
+        fclose(fp2);
 
         free_image(im1);
         free_image(im2);
     }
-    free(random_paths);
+    if(m) free(paths);
+    return d;
+}
+
+data load_data_swag(char **paths, int n, int classes, float jitter)
+{
+    int index = rand_r(&data_seed)%n;
+    char *random_path = paths[index];
+    
+    image orig = load_image_color(random_path, 0, 0);
+    int h = orig.h;
+    int w = orig.w;
+
+    data d;
+    d.shallow = 0;
+    d.w = w;
+    d.h = h;
+
+    d.X.rows = 1;
+    d.X.vals = calloc(d.X.rows, sizeof(float*));
+    d.X.cols = h*w*3;
+
+    int k = (4+classes)*30;
+    d.y = make_matrix(1, k);
+
+    int dw = w*jitter;
+    int dh = h*jitter;
+
+    int pleft  = rand_uniform(-dw, dw);
+    int pright = rand_uniform(-dw, dw);
+    int ptop   = rand_uniform(-dh, dh);
+    int pbot   = rand_uniform(-dh, dh);
+
+    int swidth =  w - pleft - pright;
+    int sheight = h - ptop - pbot;
+
+    float sx = (float)swidth  / w;
+    float sy = (float)sheight / h;
+
+    int flip = rand_r(&data_seed)%2;
+    image cropped = crop_image(orig, pleft, ptop, swidth, sheight);
+
+    float dx = ((float)pleft/w)/sx;
+    float dy = ((float)ptop /h)/sy;
+
+    image sized = resize_image(cropped, w, h);
+    if(flip) flip_image(sized);
+    d.X.vals[0] = sized.data;
+
+    fill_truth_swag(random_path, d.y.vals[0], classes, flip, dx, dy, 1./sx, 1./sy);
+
+    free_image(orig);
+    free_image(cropped);
+
     return d;
 }
 
@@ -503,10 +648,10 @@ data load_data_detection(int n, char **paths, int m, int classes, int w, int h, 
         int dw = ow/10;
         int dh = oh/10;
 
-        int pleft  = (rand_uniform() * 2*dw - dw);
-        int pright = (rand_uniform() * 2*dw - dw);
-        int ptop   = (rand_uniform() * 2*dh - dh);
-        int pbot   = (rand_uniform() * 2*dh - dh);
+        int pleft  = rand_uniform(-dw, dw);
+        int pright = rand_uniform(-dw, dw);
+        int ptop   = rand_uniform(-dh, dh);
+        int pbot   = rand_uniform(-dh, dh);
 
         int swidth =  ow - pleft - pright;
         int sheight = oh - ptop - pbot;
@@ -542,23 +687,34 @@ data load_data_detection(int n, char **paths, int m, int classes, int w, int h, 
 
 void *load_thread(void *ptr)
 {
-    
-    #ifdef GPU
-        cudaError_t status = cudaSetDevice(gpu_index);
-        check_error(status);
-    #endif
 
-    printf("Loading data: %d\n", rand_r(&data_seed));
+#ifdef GPU
+    cudaError_t status = cudaSetDevice(gpu_index);
+    check_error(status);
+#endif
+
+    //printf("Loading data: %d\n", rand_r(&data_seed));
     load_args a = *(struct load_args*)ptr;
-    if (a.type == CLASSIFICATION_DATA){
+    if (a.type == OLD_CLASSIFICATION_DATA){
         *a.d = load_data(a.paths, a.n, a.m, a.labels, a.classes, a.w, a.h);
+    } else if (a.type == CLASSIFICATION_DATA){
+        *a.d = load_data_augment(a.paths, a.n, a.m, a.labels, a.classes, a.min, a.max, a.size);
     } else if (a.type == DETECTION_DATA){
         *a.d = load_data_detection(a.n, a.paths, a.m, a.classes, a.w, a.h, a.num_boxes, a.background);
+    } else if (a.type == WRITING_DATA){
+        *a.d = load_data_writing(a.paths, a.n, a.m, a.w, a.h, a.out_w, a.out_h);
     } else if (a.type == REGION_DATA){
-        *a.d = load_data_region(a.n, a.paths, a.m, a.w, a.h, a.num_boxes, a.classes);
+        *a.d = load_data_region(a.n, a.paths, a.m, a.w, a.h, a.num_boxes, a.classes, a.jitter);
+    } else if (a.type == SWAG_DATA){
+        *a.d = load_data_swag(a.paths, a.n, a.classes, a.jitter);
+    } else if (a.type == COMPARE_DATA){
+        *a.d = load_data_compare(a.n, a.paths, a.m, a.classes, a.w, a.h);
     } else if (a.type == IMAGE_DATA){
         *(a.im) = load_image_color(a.path, 0, 0);
         *(a.resized) = resize_image(*(a.im), a.w, a.h);
+    } else if (a.type == TAG_DATA){
+        *a.d = load_data_tag(a.paths, a.n, a.m, a.classes, a.min, a.max, a.size);
+        //*a.d = load_data(a.paths, a.n, a.m, a.labels, a.classes, a.w, a.h);
     }
     free(ptr);
     return 0;
@@ -569,21 +725,18 @@ pthread_t load_data_in_thread(load_args args)
     pthread_t thread;
     struct load_args *ptr = calloc(1, sizeof(struct load_args));
     *ptr = args;
-    if(pthread_create(&thread, 0, load_thread, ptr)) {
-        error("Thread creation failed");
-    }
+    if(pthread_create(&thread, 0, load_thread, ptr)) error("Thread creation failed");
     return thread;
 }
 
-data load_data_writing(char **paths, int n, int m, int w, int h)
+data load_data_writing(char **paths, int n, int m, int w, int h, int out_w, int out_h)
 {
-	data d; //modified by frisch
     if(m) paths = get_random_paths(paths, n, m);
     char **replace_paths = find_replace_paths(paths, n, ".png", "-label.png");
-    
+    data d;
     d.shallow = 0;
     d.X = load_image_paths(paths, n, w, h);
-    d.y = load_image_paths_gray(replace_paths, n, w/8, h/8);
+    d.y = load_image_paths_gray(replace_paths, n, out_w, out_h);
     if(m) free(paths);
     int i;
     for(i = 0; i < n; ++i) free(replace_paths[i]);
@@ -593,12 +746,35 @@ data load_data_writing(char **paths, int n, int m, int w, int h)
 
 data load_data(char **paths, int n, int m, char **labels, int k, int w, int h)
 {
-	data d;
+    data d;
     if(m) paths = get_random_paths(paths, n, m);
-    
     d.shallow = 0;
     d.X = load_image_paths(paths, n, w, h);
     d.y = load_labels_paths(paths, n, labels, k);
+    if(m) free(paths);
+    return d;
+}
+
+data load_data_augment(char **paths, int n, int m, char **labels, int k, int min, int max, int size)
+{
+    data d;
+    if(m) paths = get_random_paths(paths, n, m);
+    d.shallow = 0;
+    d.X = load_image_cropped_paths(paths, n, min, max, size);
+    d.y = load_labels_paths(paths, n, labels, k);
+    if(m) free(paths);
+    return d;
+}
+
+data load_data_tag(char **paths, int n, int m, int k, int min, int max, int size)
+{
+    data d = { 0 };
+    if(m) paths = get_random_paths(paths, n, m);
+    d.w = size;
+    d.h = size;
+    d.shallow = 0;
+    d.X = load_image_cropped_paths(paths, n, min, max, size);
+    d.y = load_tags_paths(paths, n, k);
     if(m) free(paths);
     return d;
 }
@@ -666,8 +842,8 @@ data load_cifar10_data(char *filename)
             X.vals[i][j] = (double)bytes[j+1];
         }
     }
-    translate_data_rows(d, -128);
-    scale_data_rows(d, 1./128);
+    //translate_data_rows(d, -128);
+    scale_data_rows(d, 1./255);
     //normalize_data_rows(d);
     fclose(fp);
     return d;
@@ -693,6 +869,17 @@ void get_next_batch(data d, int n, int offset, float *X, float *y)
     }
 }
 
+void smooth_data(data d)
+{
+    int i, j;
+    float scale = 1. / d.y.cols;
+    float eps = .1;
+    for(i = 0; i < d.y.rows; ++i){
+        for(j = 0; j < d.y.cols; ++j){
+            d.y.vals[i][j] = eps * scale + (1-eps) * d.y.vals[i][j];
+        }
+    }
+}
 
 data load_all_cifar10()
 {
@@ -707,7 +894,7 @@ data load_all_cifar10()
 
     for(b = 0; b < 5; ++b){
         char buff[256];
-        sprintf(buff, "data/cifar10/data_batch_%d.bin", b+1);
+        sprintf(buff, "data/cifar/cifar-10-batches-bin/data_batch_%d.bin", b+1);
         FILE *fp = fopen(buff, "rb");
         if(!fp) file_error(buff);
         for(i = 0; i < 10000; ++i){
@@ -722,10 +909,58 @@ data load_all_cifar10()
         fclose(fp);
     }
     //normalize_data_rows(d);
-    translate_data_rows(d, -128);
-    scale_data_rows(d, 1./128);
+    //translate_data_rows(d, -128);
+    scale_data_rows(d, 1./255);
+   // smooth_data(d);
     return d;
 }
+
+data load_go(char *filename)
+{
+    FILE *fp = fopen(filename, "rb");
+    matrix X = make_matrix(3363059, 361);
+    matrix y = make_matrix(3363059, 361);
+    int row, col;
+
+    if(!fp) file_error(filename);
+    char *label;
+    int count = 0;
+    while((label = fgetl(fp))){
+        int i;
+        if(count == X.rows){
+            X = resize_matrix(X, count*2);
+            y = resize_matrix(y, count*2);
+        }
+        sscanf(label, "%d %d", &row, &col);
+        char *board = fgetl(fp);
+
+        int index = row*19 + col;
+        y.vals[count][index] = 1;
+
+        for(i = 0; i < 19*19; ++i){
+            float val = 0;
+            if(board[i] == '1') val = 1;
+            else if(board[i] == '2') val = -1;
+            X.vals[count][i] = val;
+        }
+        ++count;
+        free(label);
+        free(board);
+    }
+    X = resize_matrix(X, count);
+    y = resize_matrix(y, count);
+
+    data d;
+    d.shallow = 0;
+    d.X = X;
+    d.y = y;
+
+
+    fclose(fp);
+
+    return d;
+}
+
 
 void randomize_data(data d)
 {
@@ -764,6 +999,29 @@ void normalize_data_rows(data d)
     for(i = 0; i < d.X.rows; ++i){
         normalize_array(d.X.vals[i], d.X.cols);
     }
+}
+
+data get_random_data(data d, int num)
+{
+    data r = {0};
+    r.shallow = 1;
+
+    r.X.rows = num;
+    r.y.rows = num;
+
+    r.X.cols = d.X.cols;
+    r.y.cols = d.y.cols;
+
+    r.X.vals = calloc(num, sizeof(float *));
+    r.y.vals = calloc(num, sizeof(float *));
+
+    int i;
+    for(i = 0; i < num; ++i){
+        int index = rand()%d.X.rows;
+        r.X.vals[i] = d.X.vals[index];
+        r.y.vals[i] = d.y.vals[index];
+    }
+    return r;
 }
 
 data *split_data(data d, int part, int total)

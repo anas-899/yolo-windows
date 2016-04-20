@@ -1,4 +1,4 @@
-//#include "mini_blas.h" //by frisch
+//#include "mini_blas.h"
 
 void cpu_gemm_nn(int TA, int TB, int M, int N, int K, float ALPHA, 
         float *A, int lda, 

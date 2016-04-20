@@ -2,11 +2,35 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <assert.h>
+#include <unistd.h>
 #include <float.h>
 #include <limits.h>
 
-#include "unistd.h"
 #include "utils.h"
+
+void sorta_shuffle(void *arr, size_t n, size_t size, size_t sections)
+{
+    size_t i;
+    for(i = 0; i < sections; ++i){
+        size_t start = n*i/sections;
+        size_t end = n*(i+1)/sections;
+        size_t num = end-start;
+        shuffle((char*)arr+(start*size), num, size);
+    }
+}
+
+void shuffle(void *arr, size_t n, size_t size)
+{
+    size_t i;
+    void *swp = calloc(1, size);
+    for(i = 0; i < n-1; ++i){
+        size_t j = i + rand()/(RAND_MAX / (n-i)+1);
+        memcpy(swp, (char*)arr + (j*size), size);
+        memcpy((char*)arr + (j*size), (char*)arr + (i*size), size);
+        memcpy((char*)arr + (i*size), swp, size);
+    }
+}
 
 void del_arg(int argc, char **argv, int index)
 {
@@ -104,26 +128,28 @@ void pm(int M, int N, float *A)
     for(i =0 ; i < M; ++i){
         printf("%d ", i+1);
         for(j = 0; j < N; ++j){
-            printf("%10.6f, ", A[i*N+j]);
+            printf("%2.4f, ", A[i*N+j]);
         }
         printf("\n");
     }
     printf("\n");
 }
 
-
 char *find_replace(char *str, char *orig, char *rep)
 {
     static char buffer[4096];
+    static char buffer2[4096];
+    static char buffer3[4096];
     char *p;
 
     if(!(p = strstr(str, orig)))  // Is 'orig' even in 'str'?
         return str;
 
-    strncpy(buffer, str, p-str); // Copy characters from 'str' start to 'orig' st$
-    buffer[p-str] = '\0';
+    strncpy(buffer2, str, p-str); // Copy characters from 'str' start to 'orig' st$
+    buffer2[p-str] = '\0';
 
-    sprintf(buffer+(p-str), "%s%s", rep, p+strlen(orig));
+    sprintf(buffer3, "%s%s%s", buffer2, rep, p+strlen(orig));
+    sprintf(buffer, "%s", buffer3);
 
     return buffer;
 }
@@ -152,7 +178,8 @@ void top_k(float *a, int n, int k, int *index)
 void error(const char *s)
 {
     perror(s);
-    exit(0);
+    assert(0);
+    exit(-1);
 }
 
 void malloc_error()
@@ -217,7 +244,7 @@ void free_ptrs(void **ptrs, int n)
 
 char *fgetl(FILE *fp)
 {
-	size_t size;
+    size_t size;
     if(feof(fp)) return 0;
     size = 512;
     char *line = malloc(size*sizeof(char));
@@ -251,7 +278,7 @@ void read_all(int fd, char *buffer, size_t bytes)
 {
     size_t n = 0;
     while(n < bytes){
-        int next = _read(fd, buffer + n, bytes-n);
+        int next = read(fd, buffer + n, bytes-n);
         if(next <= 0) error("read failed");
         n += next;
     }
@@ -261,7 +288,7 @@ void write_all(int fd, char *buffer, size_t bytes)
 {
     size_t n = 0;
     while(n < bytes){
-        size_t next = _write(fd, buffer + n, bytes-n);
+        size_t next = write(fd, buffer + n, bytes-n);
         if(next <= 0) error("write failed");
         n += next;
     }
@@ -335,6 +362,21 @@ float sum_array(float *a, int n)
 float mean_array(float *a, int n)
 {
     return sum_array(a,n)/n;
+}
+
+void mean_arrays(float **a, int n, int els, float *avg)
+{
+    int i;
+    int j;
+    memset(avg, 0, els*sizeof(float));
+    for(j = 0; j < n; ++j){
+        for(i = 0; i < els; ++i){
+            avg[i] += a[j][i];
+        }
+    }
+    for(i = 0; i < els; ++i){
+        avg[i] /= n;
+    }
 }
 
 float variance_array(float *a, int n)
@@ -414,6 +456,12 @@ int max_index(float *a, int n)
     return max_i;
 }
 
+int rand_int(int min, int max)
+{
+    int r = (rand()%(max - min + 1)) + min;
+    return r;
+}
+
 // From http://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
 #define TWO_PI 6.2831853071795864769252866
 float rand_normal()
@@ -448,9 +496,9 @@ float rand_normal()
    }
  */
 
-float rand_uniform()
+float rand_uniform(float min, float max)
 {
-    return (float)rand()/RAND_MAX;
+    return ((float)rand()/RAND_MAX * (max - min)) + min;
 }
 
 float **one_hot_encode(float *a, int n, int k)

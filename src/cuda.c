@@ -8,7 +8,6 @@ int gpu_index = 0;
 #include "assert.h"
 #include <stdlib.h>
 #include <time.h>
-#include <stdio.h>
 
 
 void check_error(cudaError_t status)
@@ -20,7 +19,7 @@ void check_error(cudaError_t status)
         char buffer[256];
         printf("CUDA Error: %s\n", s);
         assert(0);
-        _vsnprintf(buffer, 256, "CUDA Error: %s", s);
+        snprintf(buffer, 256, "CUDA Error: %s", s);
         error(buffer);
     } 
     if (status2 != cudaSuccess)
@@ -29,7 +28,7 @@ void check_error(cudaError_t status)
         char buffer[256];
         printf("CUDA Error Prev: %s\n", s);
         assert(0);
-		_vsnprintf(buffer, 256, "CUDA Error Prev: %s", s);
+        snprintf(buffer, 256, "CUDA Error Prev: %s", s);
         error(buffer);
     } 
 }
@@ -68,6 +67,7 @@ float *cuda_make_array(float *x, int n)
         status = cudaMemcpy(x_gpu, x, size, cudaMemcpyHostToDevice);
         check_error(status);
     }
+    if(!x_gpu) error("Cuda malloc failed\n");
     return x_gpu;
 }
 

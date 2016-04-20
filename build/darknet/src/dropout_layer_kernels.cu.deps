@@ -242,11 +242,6 @@ c:\program files\nvidia gpu computing toolkit\cuda\v6.5\include\host_defines.h
 c:\program files\nvidia gpu computing toolkit\cuda\v6.5\include\vector_functions.h
 c:\program files\nvidia gpu computing toolkit\cuda\v6.5\include\device_launch_parameters.h
 c:\program files\nvidia gpu computing toolkit\cuda\v6.5\include\vector_types.h
-d:\workproject\darknet-master\src\dropout_layer.h
-d:\workproject\darknet-master\src\params.h
-d:\workproject\darknet-master\src\layer.h
-d:\workproject\darknet-master\src\activations.h
-d:\workproject\darknet-master\src\cuda.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include\cuda_runtime.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include\curand.h
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include\cuda_runtime.h
@@ -256,9 +251,30 @@ c:\program files\nvidia gpu computing toolkit\cuda\v6.5\include\driver_types.h
 c:\program files\nvidia gpu computing toolkit\cuda\v6.5\include\cuComplex.h
 C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\math.h
 c:\program files\nvidia gpu computing toolkit\cuda\v6.5\include\vector_types.h
+c:\vsproject\darknet\yolo-windows\src\dropout_layer.h
+c:\vsproject\darknet\yolo-windows\src\layer.h
+c:\vsproject\darknet\yolo-windows\src\activations.h
+c:\vsproject\darknet\yolo-windows\src\cuda.h
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include\cuda_runtime.h
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include\curand.h
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v6.5\include\cublas_v2.h
 C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\math.h
-d:\workproject\darknet-master\src\utils.h
+c:\vsproject\darknet\yolo-windows\src\network.h
+c:\vsproject\darknet\yolo-windows\src\image.h
 C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\stdio.h
 C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\crtdefs.h
 C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\swprintf.inl
-d:\workproject\darknet-master\src\list.h
+C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\float.h
+C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\crtdefs.h
+C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\crtwrn.h
+C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\crtdefs.h
+C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\math.h
+c:\vsproject\darknet\yolo-windows\src\box.h
+c:\vsproject\darknet\yolo-windows\src\data.h
+C:\VSProject\Darknet\yolo-windows\3rdparty\include\pthread.h
+C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\errno.h
+C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include\crtdefs.h
+C:\VSProject\Darknet\yolo-windows\3rdparty\include\sched.h
+c:\vsproject\darknet\yolo-windows\src\matrix.h
+c:\vsproject\darknet\yolo-windows\src\list.h
+c:\vsproject\darknet\yolo-windows\src\utils.h

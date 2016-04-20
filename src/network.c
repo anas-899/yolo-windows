@@ -8,10 +8,13 @@
 
 #include "crop_layer.h"
 #include "connected_layer.h"
+#include "rnn_layer.h"
+#include "crnn_layer.h"
+#include "local_layer.h"
 #include "convolutional_layer.h"
+#include "activation_layer.h"
 #include "deconvolutional_layer.h"
 #include "detection_layer.h"
-#include "region_layer.h"
 #include "normalization_layer.h"
 #include "maxpool_layer.h"
 #include "avgpool_layer.h"
@@ -19,16 +22,72 @@
 #include "softmax_layer.h"
 #include "dropout_layer.h"
 #include "route_layer.h"
+#include "shortcut_layer.h"
+
+int get_current_batch(network net)
+{
+    int batch_num = (*net.seen)/(net.batch*net.subdivisions);
+    return batch_num;
+}
+
+void reset_momentum(network net)
+{
+    if (net.momentum == 0) return;
+    net.learning_rate = 0;
+    net.momentum = 0;
+    net.decay = 0;
+    #ifdef GPU
+        if(gpu_index >= 0) update_network_gpu(net);
+    #endif
+}
+
+float get_current_rate(network net)
+{
+    int batch_num = get_current_batch(net);
+    int i;
+    float rate;
+    switch (net.policy) {
+        case CONSTANT:
+            return net.learning_rate;
+        case STEP:
+            return net.learning_rate * pow(net.scale, batch_num/net.step);
+        case STEPS:
+            rate = net.learning_rate;
+            for(i = 0; i < net.num_steps; ++i){
+                if(net.steps[i] > batch_num) return rate;
+                rate *= net.scales[i];
+                if(net.steps[i] > batch_num - 1) reset_momentum(net);
+            }
+            return rate;
+        case EXP:
+            return net.learning_rate * pow(net.gamma, batch_num);
+        case POLY:
+            return net.learning_rate * pow(1 - (float)batch_num / net.max_batches, net.power);
+        case SIG:
+            return net.learning_rate * (1./(1.+exp(net.gamma*(batch_num - net.step))));
+        default:
+            fprintf(stderr, "Policy is weird!\n");
+            return net.learning_rate;
+    }
+}
 
 char *get_layer_string(LAYER_TYPE a)
 {
     switch(a){
         case CONVOLUTIONAL:
             return "convolutional";
+        case ACTIVE:
+            return "activation";
+        case LOCAL:
+            return "local";
         case DECONVOLUTIONAL:
             return "deconvolutional";
         case CONNECTED:
             return "connected";
+        case RNN:
+            return "rnn";
+        case CRNN:
+            return "crnn";
         case MAXPOOL:
             return "maxpool";
         case AVGPOOL:
@@ -37,8 +96,6 @@ char *get_layer_string(LAYER_TYPE a)
             return "softmax";
         case DETECTION:
             return "detection";
-        case REGION:
-            return "region";
         case DROPOUT:
             return "dropout";
         case CROP:
@@ -47,6 +104,8 @@ char *get_layer_string(LAYER_TYPE a)
             return "cost";
         case ROUTE:
             return "route";
+        case SHORTCUT:
+            return "shortcut";
         case NORMALIZATION:
             return "normalization";
         default:
@@ -60,6 +119,7 @@ network make_network(int n)
     network net = {0};
     net.n = n;
     net.layers = calloc(net.n, sizeof(layer));
+    net.seen = calloc(1, sizeof(int));
     #ifdef GPU
     net.input_gpu = calloc(1, sizeof(float *));
     net.truth_gpu = calloc(1, sizeof(float *));
@@ -71,6 +131,7 @@ void forward_network(network net, network_state state)
 {
     int i;
     for(i = 0; i < net.n; ++i){
+        state.index = i;
         layer l = net.layers[i];
         if(l.delta){
             scal_cpu(l.outputs * l.batch, 0, l.delta, 1);
@@ -79,14 +140,20 @@ void forward_network(network net, network_state state)
             forward_convolutional_layer(l, state);
         } else if(l.type == DECONVOLUTIONAL){
             forward_deconvolutional_layer(l, state);
+        } else if(l.type == ACTIVE){
+            forward_activation_layer(l, state);
+        } else if(l.type == LOCAL){
+            forward_local_layer(l, state);
         } else if(l.type == NORMALIZATION){
             forward_normalization_layer(l, state);
         } else if(l.type == DETECTION){
             forward_detection_layer(l, state);
-        } else if(l.type == REGION){
-            forward_region_layer(l, state);
         } else if(l.type == CONNECTED){
             forward_connected_layer(l, state);
+        } else if(l.type == RNN){
+            forward_rnn_layer(l, state);
+        } else if(l.type == CRNN){
+            forward_crnn_layer(l, state);
         } else if(l.type == CROP){
             forward_crop_layer(l, state);
         } else if(l.type == COST){
@@ -101,6 +168,8 @@ void forward_network(network net, network_state state)
             forward_dropout_layer(l, state);
         } else if(l.type == ROUTE){
             forward_route_layer(l, net);
+        } else if(l.type == SHORTCUT){
+            forward_shortcut_layer(l, state);
         }
         state.input = l.output;
     }
@@ -110,14 +179,21 @@ void update_network(network net)
 {
     int i;
     int update_batch = net.batch*net.subdivisions;
+    float rate = get_current_rate(net);
     for(i = 0; i < net.n; ++i){
         layer l = net.layers[i];
         if(l.type == CONVOLUTIONAL){
-            update_convolutional_layer(l, update_batch, net.learning_rate, net.momentum, net.decay);
+            update_convolutional_layer(l, update_batch, rate, net.momentum, net.decay);
         } else if(l.type == DECONVOLUTIONAL){
-            update_deconvolutional_layer(l, net.learning_rate, net.momentum, net.decay);
+            update_deconvolutional_layer(l, rate, net.momentum, net.decay);
         } else if(l.type == CONNECTED){
-            update_connected_layer(l, update_batch, net.learning_rate, net.momentum, net.decay);
+            update_connected_layer(l, update_batch, rate, net.momentum, net.decay);
+        } else if(l.type == RNN){
+            update_rnn_layer(l, update_batch, rate, net.momentum, net.decay);
+        } else if(l.type == CRNN){
+            update_crnn_layer(l, update_batch, rate, net.momentum, net.decay);
+        } else if(l.type == LOCAL){
+            update_local_layer(l, update_batch, rate, net.momentum, net.decay);
         }
     }
 }
@@ -136,14 +212,10 @@ float get_network_cost(network net)
     int count = 0;
     for(i = 0; i < net.n; ++i){
         if(net.layers[i].type == COST){
-            sum += net.layers[i].output[0];
-            ++count;
-        }
-        if(net.layers[i].type == DETECTION){
             sum += net.layers[i].cost[0];
             ++count;
         }
-        if(net.layers[i].type == REGION){
+        if(net.layers[i].type == DETECTION){
             sum += net.layers[i].cost[0];
             ++count;
         }
@@ -164,6 +236,7 @@ void backward_network(network net, network_state state)
     float *original_input = state.input;
     float *original_delta = state.delta;
     for(i = net.n-1; i >= 0; --i){
+        state.index = i;
         if(i == 0){
             state.input = original_input;
             state.delta = original_delta;
@@ -177,6 +250,8 @@ void backward_network(network net, network_state state)
             backward_convolutional_layer(l, state);
         } else if(l.type == DECONVOLUTIONAL){
             backward_deconvolutional_layer(l, state);
+        } else if(l.type == ACTIVE){
+            backward_activation_layer(l, state);
         } else if(l.type == NORMALIZATION){
             backward_normalization_layer(l, state);
         } else if(l.type == MAXPOOL){
@@ -187,26 +262,35 @@ void backward_network(network net, network_state state)
             backward_dropout_layer(l, state);
         } else if(l.type == DETECTION){
             backward_detection_layer(l, state);
-        } else if(l.type == REGION){
-            backward_region_layer(l, state);
         } else if(l.type == SOFTMAX){
             if(i != 0) backward_softmax_layer(l, state);
         } else if(l.type == CONNECTED){
             backward_connected_layer(l, state);
+        } else if(l.type == RNN){
+            backward_rnn_layer(l, state);
+        } else if(l.type == CRNN){
+            backward_crnn_layer(l, state);
+        } else if(l.type == LOCAL){
+            backward_local_layer(l, state);
         } else if(l.type == COST){
             backward_cost_layer(l, state);
         } else if(l.type == ROUTE){
             backward_route_layer(l, net);
+        } else if(l.type == SHORTCUT){
+            backward_shortcut_layer(l, state);
         }
     }
 }
 
 float train_network_datum(network net, float *x, float *y)
 {
-	network_state state;
+    network_state state;
+    *net.seen += net.batch;
 #ifdef GPU
     if(gpu_index >= 0) return train_network_datum_gpu(net, x, y);
-#endif    
+#endif
+    state.index = 0;
+    state.net = net;
     state.input = x;
     state.delta = 0;
     state.truth = y;
@@ -214,7 +298,7 @@ float train_network_datum(network net, float *x, float *y)
     forward_network(net, state);
     backward_network(net, state);
     float error = get_network_cost(net);
-    if((net.seen/net.batch)%net.subdivisions == 0) update_network(net);
+    if(((*net.seen)/net.batch)%net.subdivisions == 0) update_network(net);
     return error;
 }
 
@@ -227,7 +311,6 @@ float train_network_sgd(network net, data d, int n)
     int i;
     float sum = 0;
     for(i = 0; i < n; ++i){
-        net.seen += batch;
         get_random_batch(d, batch, X, y);
         float err = train_network_datum(net, X, y);
         sum += err;
@@ -248,7 +331,6 @@ float train_network(network net, data d)
     float sum = 0;
     for(i = 0; i < n; ++i){
         get_next_batch(d, batch, i*batch, X, y);
-        net.seen += batch;
         float err = train_network_datum(net, X, y);
         sum += err;
     }
@@ -261,6 +343,8 @@ float train_network_batch(network net, data d, int n)
 {
     int i,j;
     network_state state;
+    state.index = 0;
+    state.net = net;
     state.train = 1;
     state.delta = 0;
     float sum = 0;
@@ -294,25 +378,31 @@ int resize_network(network *net, int w, int h)
     //if(w == net->w && h == net->h) return 0;
     net->w = w;
     net->h = h;
+    int inputs = 0;
     //fprintf(stderr, "Resizing to %d x %d...", w, h);
     //fflush(stderr);
     for (i = 0; i < net->n; ++i){
         layer l = net->layers[i];
         if(l.type == CONVOLUTIONAL){
             resize_convolutional_layer(&l, w, h);
+        }else if(l.type == CROP){
+            resize_crop_layer(&l, w, h);
         }else if(l.type == MAXPOOL){
             resize_maxpool_layer(&l, w, h);
         }else if(l.type == AVGPOOL){
             resize_avgpool_layer(&l, w, h);
-            break;
         }else if(l.type == NORMALIZATION){
             resize_normalization_layer(&l, w, h);
+        }else if(l.type == COST){
+            resize_cost_layer(&l, inputs);
         }else{
             error("Cannot resize this type of layer");
         }
+        inputs = l.outputs;
         net->layers[i] = l;
         w = l.out_w;
         h = l.out_h;
+        if(l.type == AVGPOOL) break;
     }
     //fprintf(stderr, " Done!\n");
     return 0;
@@ -388,11 +478,12 @@ void top_predictions(network net, int k, int *index)
 
 float *network_predict(network net, float *input)
 {
-	network_state state;
+    network_state state;
 #ifdef GPU
     if(gpu_index >= 0)  return network_predict_gpu(net, input);
 #endif
-	    
+        state.net = net;
+    state.index = 0;
     state.input = input;
     state.truth = 0;
     state.train = 0;
@@ -500,12 +591,12 @@ float network_accuracy(network net, data d)
     return acc;
 }
 
-float *network_accuracies(network net, data d)
+float *network_accuracies(network net, data d, int n)
 {
     static float acc[2];
     matrix guess = network_predict_data(net, d);
-    acc[0] = matrix_topk_accuracy(d.y, guess,1);
-    acc[1] = matrix_topk_accuracy(d.y, guess,5);
+    acc[0] = matrix_topk_accuracy(d.y, guess, 1);
+    acc[1] = matrix_topk_accuracy(d.y, guess, n);
     free_matrix(guess);
     return acc;
 }

@@ -2,8 +2,13 @@
 #include "utils.h"
 #include "parser.h"
 
+#ifdef OPENCV
+#include "opencv2/highgui/highgui_c.h"
+#endif
+
 void train_writing(char *cfgfile, char *weightfile)
 {
+    char *backup_directory = "/home/pjreddie/backup/";
     data_seed = time(0);
     srand(time(0));
     float avg_loss = -1;
@@ -14,48 +19,119 @@ void train_writing(char *cfgfile, char *weightfile)
         load_weights(&net, weightfile);
     }
     printf("Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
-    int imgs = 1024;
-    int i = net.seen/imgs;
+    int imgs = net.batch*net.subdivisions;
     list *plist = get_paths("figures.list");
     char **paths = (char **)list_to_array(plist);
-    printf("%d\n", plist->size);
     clock_t time;
-    while(1){
-        ++i;
+    int N = plist->size;
+    printf("N: %d\n", N);
+    image out = get_network_image(net);
+
+    data train, buffer;
+
+    load_args args = {0};
+    args.w = net.w;
+    args.h = net.h;
+    args.out_w = out.w;
+    args.out_h = out.h;
+    args.paths = paths;
+    args.n = imgs;
+    args.m = N;
+    args.d = &buffer;
+    args.type = WRITING_DATA;
+
+    pthread_t load_thread = load_data_in_thread(args);
+    int epoch = (*net.seen)/N;
+    while(get_current_batch(net) < net.max_batches || net.max_batches == 0){
         time=clock();
-        data train = load_data_writing(paths, imgs, plist->size, 512, 512);
+        pthread_join(load_thread, 0);
+        train = buffer;
+        load_thread = load_data_in_thread(args);
+        printf("Loaded %lf seconds\n",sec(clock()-time));
+
+        time=clock();
         float loss = train_network(net, train);
-        #ifdef GPU
-        float *out = get_network_output_gpu(net);
-        #else
-        float *out = get_network_output(net);
-        #endif
-        image pred = float_to_image(64, 64, 1, out);
-        print_image(pred);
 
-/*
-        image im = float_to_image(256, 256, 3, train.X.vals[0]);
-        image lab = float_to_image(64, 64, 1, train.y.vals[0]);
-        image pred = float_to_image(64, 64, 1, out);
-        show_image(im, "image");
-        show_image(lab, "label");
-        print_image(lab);
-        show_image(pred, "pred");
-        cvWaitKey(0);
-        */
+        /*
+           image pred = float_to_image(64, 64, 1, out);
+           print_image(pred);
+         */
 
-        net.seen += imgs;
+        /*
+           image im = float_to_image(256, 256, 3, train.X.vals[0]);
+           image lab = float_to_image(64, 64, 1, train.y.vals[0]);
+           image pred = float_to_image(64, 64, 1, out);
+           show_image(im, "image");
+           show_image(lab, "label");
+           print_image(lab);
+           show_image(pred, "pred");
+           cvWaitKey(0);
+         */
+
         if(avg_loss == -1) avg_loss = loss;
         avg_loss = avg_loss*.9 + loss*.1;
-        printf("%d: %f, %f avg, %lf seconds, %d images\n", i, loss, avg_loss, sec(clock()-time), net.seen);
+        printf("%d, %.3f: %f, %f avg, %f rate, %lf seconds, %d images\n", get_current_batch(net), (float)(*net.seen)/N, loss, avg_loss, get_current_rate(net), sec(clock()-time), *net.seen);
         free_data(train);
-        if((i % 20000) == 0) net.learning_rate *= .1;
-        //if(i%100 == 0 && net.learning_rate > .00001) net.learning_rate *= .97;
-        if(i%1000==0){
+        if(get_current_batch(net)%100 == 0){
             char buff[256];
-            sprintf(buff, "/home/pjreddie/imagenet_backup/%s_%d.weights",base, i);
+            sprintf(buff, "%s/%s_batch_%d.weights", backup_directory, base, get_current_batch(net));
             save_weights(net, buff);
         }
+        if(*net.seen/N > epoch){
+            epoch = *net.seen/N;
+            char buff[256];
+            sprintf(buff, "%s/%s_%d.weights",backup_directory,base, epoch);
+            save_weights(net, buff);
+        }
+    }
+}
+
+void test_writing(char *cfgfile, char *weightfile, char *filename)
+{
+    network net = parse_network_cfg(cfgfile);
+    if(weightfile){
+        load_weights(&net, weightfile);
+    }
+    set_batch_network(&net, 1);
+    srand(2222222);
+    clock_t time;
+    char buff[256];
+    char *input = buff;
+    while(1){
+        if(filename){
+            strncpy(input, filename, 256);
+        }else{
+            printf("Enter Image Path: ");
+            fflush(stdout);
+            input = fgets(input, 256, stdin);
+            if(!input) return;
+            strtok(input, "\n");
+        }
+
+        image im = load_image_color(input, 0, 0);
+        resize_network(&net, im.w, im.h);
+        printf("%d %d %d\n", im.h, im.w, im.c);
+        float *X = im.data;
+        time=clock();
+        network_predict(net, X);
+        printf("%s: Predicted in %f seconds.\n", input, sec(clock()-time));
+        image pred = get_network_image(net);
+
+        image upsampled = resize_image(pred, im.w, im.h);
+        image thresh = threshold_image(upsampled, .5);
+        pred = thresh;
+
+        show_image(pred, "prediction");
+        show_image(im, "orig");
+#ifdef OPENCV
+        cvWaitKey(0);
+        cvDestroyAllWindows();
+#endif
+
+        free_image(upsampled);
+        free_image(thresh);
+        free_image(im);
+        if (filename) break;
     }
 }
 
@@ -68,6 +144,8 @@ void run_writing(int argc, char **argv)
 
     char *cfg = argv[3];
     char *weights = (argc > 4) ? argv[4] : 0;
+    char *filename = (argc > 5) ? argv[5] : 0;
     if(0==strcmp(argv[2], "train")) train_writing(cfg, weights);
+    else if(0==strcmp(argv[2], "test")) test_writing(cfg, weights, filename);
 }
 

@@ -2,9 +2,9 @@
 #define MAXPOOL_LAYER_H
 
 #include "image.h"
-#include "params.h"
 #include "cuda.h"
 #include "layer.h"
+#include "network.h"
 
 typedef layer maxpool_layer;
 
