@@ -5,6 +5,7 @@
 #include "blas.h"
 //#include <sys/time.h>
 #include <time.h>
+#include <winsock.h>
 
 #ifdef OPENCV
 #include "opencv2/highgui/highgui_c.h"
@@ -607,8 +608,11 @@ void demo_classifier(char *datacfg, char *cfgfile, char *weightfile, int cam_ind
     float fps = 0;
     int i;
 
+
+
     while(1){
-        struct timeval tval_before, tval_after, tval_result;
+        typedef struct timeval timeval;
+        timeval tval_before, tval_after, tval_result;
         gettimeofday(&tval_before, NULL);
 
         image in = get_image_from_stream(cap);

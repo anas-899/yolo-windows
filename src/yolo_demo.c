@@ -7,8 +7,28 @@
 #include "image.h"
 //#include <sys/time.h>
 #include <time.h>
+#include <winsock.h>
+
+
+#pragma comment(lib, "opencv_core249.lib")  
+#pragma comment(lib, "opencv_imgproc249.lib")  
+#pragma comment(lib, "opencv_objdetect249.lib")  
+#pragma comment(lib, "opencv_gpu249.lib")  
+#pragma comment(lib, "opencv_features2d249.lib")  
+#pragma comment(lib, "opencv_highgui249.lib")  
+//#pragma comment(lib, "opencv_ml249.lib")  
+#pragma comment(lib, "opencv_stitching249.lib")  
+#pragma comment(lib, "opencv_nonfree249.lib")  
+//#pragma comment(lib, "opencv_superres249.lib")  
+#pragma comment(lib, "opencv_calib3d249.lib")  
+#pragma comment(lib, "opencv_flann249.lib")  
+//#pragma comment(lib, "opencv_contrib249.lib")  
+//#pragma comment(lib, "opencv_legacy249.lib")  
+#pragma comment(lib, "opencv_photo249.lib")  
+#pragma comment(lib, "opencv_video249.lib")  
 
 #ifdef OPENCV
+/*
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 image ipl_to_image(IplImage* src);
@@ -98,7 +118,8 @@ void demo_yolo(char *cfgfile, char *weightfile, float thresh, int cam_index, cha
     det_s = in_s;
 
     while(1){
-        struct timeval tval_before, tval_after, tval_result;
+        typedef struct timeval timeval;
+        timeval tval_before, tval_after, tval_result;
         gettimeofday(&tval_before, NULL);
         if(pthread_create(&fetch_thread, 0, fetch_in_thread, 0)) error("Thread creation failed");
         if(pthread_create(&detect_thread, 0, detect_in_thread, 0)) error("Thread creation failed");
@@ -118,9 +139,12 @@ void demo_yolo(char *cfgfile, char *weightfile, float thresh, int cam_index, cha
         fps = .9*fps + .1*curr;
     }
 }
+*/
 #else
+/*
 void demo_yolo(char *cfgfile, char *weightfile, float thresh, int cam_index, char *filename){
     fprintf(stderr, "YOLO demo needs OpenCV for webcam images.\n");
 }
+*/
 #endif
 

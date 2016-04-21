@@ -12,9 +12,30 @@ extern "C" {
 #include "image.h"
 //#include <sys/time.h>
 #include <time.h>
+#include <winsock.h>
+#include "gettimeofday.h"
 }
 
+#pragma comment(lib, "opencv_core249.lib")  
+#pragma comment(lib, "opencv_imgproc249.lib")  
+#pragma comment(lib, "opencv_objdetect249.lib")  
+#pragma comment(lib, "opencv_gpu249.lib")  
+#pragma comment(lib, "opencv_features2d249.lib")  
+#pragma comment(lib, "opencv_highgui249.lib")  
+//#pragma comment(lib, "opencv_ml249.lib")  
+#pragma comment(lib, "opencv_stitching249.lib")  
+#pragma comment(lib, "opencv_nonfree249.lib")  
+//#pragma comment(lib, "opencv_superres249.lib")  
+#pragma comment(lib, "opencv_calib3d249.lib")  
+#pragma comment(lib, "opencv_flann249.lib")  
+//#pragma comment(lib, "opencv_contrib249.lib")  
+//#pragma comment(lib, "opencv_legacy249.lib")  
+#pragma comment(lib, "opencv_photo249.lib")  
+#pragma comment(lib, "opencv_video249.lib")  
+
+
 #ifdef OPENCV
+
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 extern "C" image ipl_to_image(IplImage* src);
@@ -65,7 +86,7 @@ void *detect_in_thread(void *ptr)
     return 0;
 }
 
-extern "C" void demo_yolo(char *cfgfile, char *weightfile, float thresh, int cam_index)
+extern "C" void demo_yolo(char *cfgfile, char *weightfile, float thresh, int cam_index, char *filename)
 {
     demo_thresh = thresh;
     printf("YOLO demo\n");
@@ -77,8 +98,15 @@ extern "C" void demo_yolo(char *cfgfile, char *weightfile, float thresh, int cam
 
     srand(2222222);
 
-    cv::VideoCapture cam(cam_index);
-    cap = cam;
+    if (filename){
+        cap = cv::VideoCapture(filename);
+    }
+    else{
+        cap = cv::VideoCapture(cam_index);
+    }
+
+    //cv::VideoCapture cam(cam_index);
+    //cap = cam;
     if(!cap.isOpened()) error("Couldn't connect to webcam.\n");
 
     detection_layer l = net.layers[net.n-1];
@@ -106,6 +134,9 @@ extern "C" void demo_yolo(char *cfgfile, char *weightfile, float thresh, int cam
         gettimeofday(&tval_before, NULL);
         if(pthread_create(&fetch_thread, 0, fetch_in_thread, 0)) error("Thread creation failed");
         if(pthread_create(&detect_thread, 0, detect_in_thread, 0)) error("Thread creation failed");
+
+
+
         show_image(disp, "YOLO");
         free_image(disp);
         cvWaitKey(1);
@@ -123,10 +154,8 @@ extern "C" void demo_yolo(char *cfgfile, char *weightfile, float thresh, int cam
     }
 }
 #else
-/*
 extern "C" void demo_yolo(char *cfgfile, char *weightfile, float thresh, int cam_index){
     fprintf(stderr, "YOLO demo needs OpenCV for webcam images.\n");
 }
-*/
 #endif
 

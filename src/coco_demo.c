@@ -7,6 +7,7 @@
 #include "image.h"
 //#include <sys/time.h>
 #include <time.h>
+#include <winsock.h>
 
 #define FRAMES 1
 
