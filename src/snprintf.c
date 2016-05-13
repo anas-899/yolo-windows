@@ -77,6 +77,38 @@ int snprintf(char *s, size_t n, const char *fmt, ...)
 
 
 
-int rand_r(unsigned int *seedp) {
+//because windows doesn't have rand_r functions, so write this function to substitutte;
+//add by frisch 2015/09/17
+#if 0
+int rand_r(int* random_seed)
+{
+    srand(*random_seed);
     return rand();
+}
+#endif
+
+//add by frisch 2015/09/17
+//generate random number
+int rand_r(unsigned int *seed)
+{
+    unsigned int next = *seed;
+    int result;
+
+    next *= 1103515245;
+    next += 12345;
+    result = (unsigned int)(next / 65536) % 2048;
+
+    next *= 1103515245;
+    next += 12345;
+    result <<= 10;
+    result ^= (unsigned int)(next / 65536) % 1024;
+
+    next *= 1103515245;
+    next += 12345;
+    result <<= 10;
+    result ^= (unsigned int)(next / 65536) % 1024;
+
+    *seed = next;
+
+    return result;
 }

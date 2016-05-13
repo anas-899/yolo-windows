@@ -11,7 +11,7 @@ unsigned int data_seed;
 
 list *get_paths(char *filename)
 {
-    list *lines;
+    list *lines = NULL;  //add by frisch // list *lines;
     char *path;
     FILE *file = fopen(filename, "r");
     if(!file) file_error(filename);
