@@ -33,6 +33,9 @@ extern "C" {
 #pragma comment(lib, "opencv_photo249.lib")  
 #pragma comment(lib, "opencv_video249.lib")  
 
+//#define CLASSNUM 2
+//#define CLASSNUM 4
+#define CLASSNUM 20
 
 #ifdef OPENCV
 
@@ -82,7 +85,7 @@ void *detect_in_thread(void *ptr)
     printf("\033[1;1H");
     printf("\nFPS:%.0f\n",fps);
     printf("Objects:\n\n");
-    draw_detections(det, l.side*l.side*l.n, demo_thresh, boxes, probs, voc_names, voc_labels, 20);
+    draw_detections(det, l.side*l.side*l.n, demo_thresh, boxes, probs, voc_names, voc_labels, CLASSNUM);
     return 0;
 }
 
