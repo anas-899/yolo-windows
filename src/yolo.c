@@ -9,17 +9,12 @@
 #include "opencv2/highgui/highgui_c.h"
 #endif
 
-/* Change class number here */
-//#define CLASSNUM 2
-//#define CLASSNUM 4
-#define CLASSNUM 20
-
-/* Change class names here */
-//char *voc_names[] = { "air", "tank", "camaro", "lamborghini" };
-//char *voc_names[] = { "stopsign", "person" };
+/* Max class number here */
+#define CLASSNUM 255
 image voc_labels[CLASSNUM];
-char *voc_names[] = {"aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"};
-//image voc_labels[20];
+
+char **voc_names;
+//char *voc_names[] = {"aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"};
 
 void train_yolo(char *cfgfile, char *weightfile)
 {
@@ -355,7 +350,8 @@ void test_yolo(char *cfgfile, char *weightfile, char *filename, float thresh)
         convert_yolo_detections(predictions, l.classes, l.n, l.sqrt, l.side, 1, 1, thresh, probs, boxes, 0);
         if (nms) do_nms_sort(boxes, probs, l.side*l.side*l.n, l.classes, nms);
         //draw_detections(im, l.side*l.side*l.n, thresh, boxes, probs, voc_names, voc_labels, 20);
-        draw_detections(im, l.side*l.side*l.n, thresh, boxes, probs, voc_names, 0, CLASSNUM);
+        //draw_detections(im, l.side*l.side*l.n, thresh, boxes, probs, voc_names, 0, CLASSNUM);
+        draw_detections(im, l.side*l.side*l.n, thresh, boxes, probs, voc_names, 0, l.classes);
         show_image(im, "predictions");
         save_image(im, "predictions");
 
@@ -410,23 +406,57 @@ void demo_yolo(char *cfgfile, char *weightfile, float thresh, int cam_index, cha
 
 void run_yolo(int argc, char **argv)
 {
+    int size_voc_names = 0;
     int i;
-    for (i = 0; i < CLASSNUM; ++i){
-        char buff[256];
-        sprintf(buff, "data/labels/%s.png", voc_names[i]);
-        voc_labels[i] = load_image_color(buff, 0, 0);
-    }
-
     float thresh = find_float_arg(argc, argv, "-thresh", .2);
     int cam_index = find_int_arg(argc, argv, "-c", 0);
     if(argc < 4){
-        fprintf(stderr, "usage: %s %s [train/test/valid] [cfg] [weights (optional)]\n", argv[0], argv[1]);
+        fprintf(stderr, "usage: %s %s [train/test/valid] [cfg] [weights (optional)] [synset (optional)]\n", argv[0], argv[1]);
         return;
     }
 
     char *cfg = argv[3];
     char *weights = (argc > 4) ? argv[4] : 0;
     char *filename = (argc > 5) ? argv[5]: 0;
+    char *synset = (argc > 6) ? argv[6] : 0;
+
+    printf(" Sysnet file: %s \n", synset);
+    if (synset != 0) {
+        voc_names = (char **)malloc(sizeof(char *)*CLASSNUM);
+        for (i = 0; i < CLASSNUM; ++i)
+            voc_names[i] = (char *)malloc(sizeof(char)*256);
+
+        FILE * fp;
+        char line[256];
+        size_t read, len = 256;
+        
+        fp = fopen(synset, "r");
+        if (fp == NULL)
+            exit(EXIT_FAILURE);
+
+        size_voc_names = -1;
+        while (fgets(voc_names[++size_voc_names], len, fp) != NULL) {
+            for (i = 0; i < 256; ++i) {
+                if (voc_names[size_voc_names][i] == 13 || voc_names[size_voc_names][i] == 10)
+                    voc_names[size_voc_names][i] = 0;
+            }            
+        }
+        fclose(fp);
+    }
+    else {
+        static char *local_voc_names[] = { "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor" };
+        voc_names = local_voc_names;
+        size_voc_names = (sizeof(local_voc_names) / sizeof(char*));
+    }
+
+    printf(" Synset size: %d \n", size_voc_names);
+
+    for (i = 0; i < size_voc_names; ++i){
+        char buff[256];
+        sprintf(buff, "data/labels/%s.png", voc_names[i]);
+        voc_labels[i] = load_image_color(buff, 0, 0);
+    }
+
     if(0==strcmp(argv[2], "test")) test_yolo(cfg, weights, filename, thresh);
     else if(0==strcmp(argv[2], "train")) train_yolo(cfg, weights);
     else if(0==strcmp(argv[2], "valid")) validate_yolo(cfg, weights);
